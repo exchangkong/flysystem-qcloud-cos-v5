@@ -54,7 +54,7 @@ class Adapter implements FilesystemAdapter
         $this->client = $client;
         $this->config = $config;
 
-        $this->setPathPrefix($config['cdn']);
+        // $this->setPathPrefix($config['cdn']);
     }
 
     /**
@@ -62,7 +62,8 @@ class Adapter implements FilesystemAdapter
      */
     public function getBucketWithAppId()
     {
-        return $this->getBucket().'-'.$this->getAppId();
+        //return $this->getBucket().'-'.$this->getAppId();
+        return $this->getBucket();
     }
 
     /**
@@ -116,29 +117,6 @@ class Adapter implements FilesystemAdapter
         return sprintf('%s.pic.%s.myqcloud.com/%s',
             $this->getBucketWithAppId(), $this->getRegion(), $path
         );
-    }
-
-    /**
-     * @param string $path
-     *
-     * @return string
-     */
-    public function getUrl($path)
-    {
-        if ($this->config['cdn']) {
-            return $this->applyPathPrefix($path);
-        }
-
-        $options = [
-            'Scheme' => isset($this->config['scheme']) ? $this->config['scheme'] : 'http',
-        ];
-
-        /** @var \GuzzleHttp\Psr7\Uri $objectUrl */
-        $objectUrl = $this->client->getObjectUrl(
-            $this->getBucketWithAppId(), $path, "+30 minutes", $options
-        );
-
-        return (string) $objectUrl;
     }
 
     /**
@@ -229,24 +207,6 @@ class Adapter implements FilesystemAdapter
         return $this->writeStream($path, $resource, $config);
     }
 
-    /**
-     * @param string $path
-     * @param string $newpath
-     *
-     * @return bool
-     */
-    public function rename($path, $newpath)
-    {
-        try {
-            if ($result = $this->copy($path, $newpath)) {
-                $this->delete($path);
-            }
-
-            return $result;
-        } catch (ServiceResponseException $e) {
-            return false;
-        }
-    }
 
     /**
      * @param string $path
@@ -302,25 +262,6 @@ class Adapter implements FilesystemAdapter
     }
 
     /**
-     * @param string $dirname
-     * @param Config $config
-     *
-     * @return array|false
-     */
-    public function createDir($dirname, Config $config)
-    {
-        try {
-            return $this->client->putObject([
-                'Bucket' => $this->getBucketWithAppId(),
-                'Key'    => $dirname.'/',
-                'Body'   => '',
-            ]);
-        } catch (ServiceResponseException $e) {
-            return false;
-        }
-    }
-
-    /**
      * @param string $path
      * @param string $visibility
      *
@@ -361,9 +302,7 @@ class Adapter implements FilesystemAdapter
     public function read($path): string
     {
         try {
-            $response = $this->forceReadFromCDN()
-                ? $this->readFromCDN($path)
-                : $this->readFromSource($path);
+            $response = $this->readFromSource($path);
 
             return (string) $response;
 
@@ -381,19 +320,6 @@ class Adapter implements FilesystemAdapter
         return $this->config['cdn']
             && isset($this->config['read_from_cdn'])
             && $this->config['read_from_cdn'];
-    }
-
-    /**
-     * @param $path
-     *
-     * @return string
-     */
-    protected function readFromCDN($path)
-    {
-        return $this->getHttpClient()
-            ->get($this->applyPathPrefix($path))
-            ->getBody()
-            ->getContents();
     }
 
     /**
@@ -479,7 +405,7 @@ class Adapter implements FilesystemAdapter
      *
      * @return array|bool
      */
-    public function getMetadata($path)
+    public function getMetadata(string $path)
     {
         try {
             return $this->client->headObject([
@@ -531,39 +457,11 @@ class Adapter implements FilesystemAdapter
     }
 
     /**
-     * @param string $path
-     *
-     * @return array|bool
-     */
-    public function getVisibility($path)
-    {
-        try {
-            $meta = $this->client->getObjectAcl([
-                'Bucket' => $this->getBucketWithAppId(),
-                'Key'    => $path,
-            ]);
-
-            foreach ($meta['Grants'] as $grant) {
-                if (isset($grant['Grantee']['URI'])
-                    && $grant['Permission'] === 'READ'
-                    && strpos($grant['Grantee']['URI'], 'global/AllUsers') !== false
-                ) {
-                    return ['visibility' => AdapterInterface::VISIBILITY_PUBLIC];
-                }
-            }
-
-            return ['visibility' => AdapterInterface::VISIBILITY_PRIVATE];
-        } catch (ServiceResponseException $e) {
-            return false;
-        }
-    }
-
-    /**
      * @param array $content
      *
      * @return array
      */
-    private function normalizeFileInfo(array $content)
+    private function normalizeFileInfo(array $content): array
     {
         $path = pathinfo($content['Key']);
 
