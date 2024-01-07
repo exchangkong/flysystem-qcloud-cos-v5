@@ -554,6 +554,19 @@ class Adapter implements FilesystemAdapter
     }
 
     /**
+     * @param string $path
+     *
+     * @return string
+     */
+    public function getUrl($path): string
+    {
+        if ($this->config['cdn']) {
+            return rtrim($this->config['cdn'], '/').'/'.ltrim($path);
+        }
+        return rtrim($this->config['url'], '/').'/'.ltrim($path);
+    }
+
+    /**
      * @param $method
      * @param $url
      *
