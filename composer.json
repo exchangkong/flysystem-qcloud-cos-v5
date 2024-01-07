@@ -15,25 +15,25 @@
     },
     "autoload": {
         "psr-4": {
-            "Exchangkong\\Flysystem\\QcloudCOSv5\\": "src/"
+            "Freyo\\Flysystem\\QcloudCOSv5\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Exchangkong\\Flysystem\\QcloudCOSv5\\Tests\\": "tests"
+            "Freyo\\Flysystem\\QcloudCOSv5\\Tests\\": "tests"
         }
     },
     "license": "MIT",
     "authors": [
         {
-            "name": "Exchangkong",
+            "name": "freyo",
             "email": "freyhsiao@gmail.com"
         }
     ],
     "extra": {
         "laravel": {
             "providers": [
-                "Exchangkong\\Flysystem\\QcloudCOSv5\\ServiceProvider"
+                "Freyo\\Flysystem\\QcloudCOSv5\\ServiceProvider"
             ]
         }
     }
