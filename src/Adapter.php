@@ -5,6 +5,7 @@ namespace Freyo\Flysystem\QcloudCOSv5;
 use Carbon\Carbon;
 use DateTimeInterface;
 use League\Flysystem\FileAttributes;
+use League\Flysystem\Visibility;
 use League\Flysystem\FilesystemAdapter;
 use League\Flysystem\Config;
 use Qcloud\Cos\Client;
@@ -517,11 +518,11 @@ class Adapter implements FilesystemAdapter
             $options['ServerSideEncryption'] = 'AES256';
         }
 
-        if ($config->has('params')) {
+        if ($config->get('params')) {
             $options = array_merge($options, $config->get('params'));
         }
 
-        if ($config->has('visibility')) {
+        if ($config->get('visibility')) {
             $options['ACL'] = $this->normalizeVisibility($config->get('visibility'));
         }
 
@@ -533,10 +534,10 @@ class Adapter implements FilesystemAdapter
      *
      * @return string
      */
-    private function normalizeVisibility($visibility)
+    private function normalizeVisibility($visibility): string
     {
         switch ($visibility) {
-            case AdapterInterface::VISIBILITY_PUBLIC:
+            case Visibility::PUBLIC:
                 $visibility = 'public-read';
                 break;
         }
