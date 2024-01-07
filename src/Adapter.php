@@ -4,9 +4,8 @@ namespace Freyo\Flysystem\QcloudCOSv5;
 
 use Carbon\Carbon;
 use DateTimeInterface;
-use League\Flysystem\Adapter\AbstractAdapter;
-use League\Flysystem\Adapter\CanOverwriteFiles;
-use League\Flysystem\AdapterInterface;
+use League\Flysystem\FileAttributes;
+use League\Flysystem\FilesystemAdapter;
 use League\Flysystem\Config;
 use Qcloud\Cos\Client;
 use Qcloud\Cos\Exception\ServiceResponseException;
@@ -14,7 +13,7 @@ use Qcloud\Cos\Exception\ServiceResponseException;
 /**
  * Class Adapter.
  */
-class Adapter extends AbstractAdapter implements CanOverwriteFiles
+class Adapter implements FilesystemAdapter
 {
     /**
      * @var Client
@@ -171,38 +170,38 @@ class Adapter extends AbstractAdapter implements CanOverwriteFiles
      *
      * @return array|false
      */
-    public function write($path, $contents, Config $config)
+    public function write(string $path, $contents, Config $config): void
     {
         try {
-            return $this->client->upload(
+            $this->client->upload(
                 $this->getBucketWithAppId(),
                 $path,
                 $contents,
                 $this->prepareUploadConfig($config)
             );
         } catch (ServiceResponseException $e) {
-            return false;
+            echo $e.PHP_EOL;
         }
     }
 
     /**
-     * @param string   $path
-     * @param resource $resource
+     * @param string $path
+     * @param resource $contents
      * @param Config   $config
      *
      * @return array|false
      */
-    public function writeStream($path, $resource, Config $config)
+    public function writeStream(string $path, $contents, Config $config): void
     {
         try {
-            return $this->client->upload(
+            $this->client->upload(
                 $this->getBucketWithAppId(),
                 $path,
-                stream_get_contents($resource, -1, 0),
+                stream_get_contents($contents, -1, 0),
                 $this->prepareUploadConfig($config)
             );
         } catch (ServiceResponseException $e) {
-            return false;
+            echo $e.PHP_EOL;
         }
     }
 
@@ -213,19 +212,19 @@ class Adapter extends AbstractAdapter implements CanOverwriteFiles
      *
      * @return array|false
      */
-    public function update($path, $contents, Config $config)
+    public function update(string $path, string $contents, Config $config)
     {
         return $this->write($path, $contents, $config);
     }
 
     /**
-     * @param string   $path
+     * @param string $path
      * @param resource $resource
      * @param Config   $config
      *
      * @return array|false
      */
-    public function updateStream($path, $resource, Config $config)
+    public function updateStream(string $path, $resource, Config $config)
     {
         return $this->writeStream($path, $resource, $config);
     }
@@ -255,16 +254,16 @@ class Adapter extends AbstractAdapter implements CanOverwriteFiles
      *
      * @return bool
      */
-    public function copy($path, $newpath)
+    public function copy(string $path, string $newpath, Config $config): void
     {
         try {
-            return (bool) $this->client->copyObject([
+            $this->client->copyObject([
                 'Bucket'     => $this->getBucketWithAppId(),
                 'Key'        => $newpath,
                 'CopySource' => $this->getSourcePath($path),
             ]);
         } catch (ServiceResponseException $e) {
-            return false;
+            echo $e.PHP_EOL;
         }
     }
 
@@ -273,15 +272,15 @@ class Adapter extends AbstractAdapter implements CanOverwriteFiles
      *
      * @return bool
      */
-    public function delete($path)
+    public function delete($path): void
     {
         try {
-            return (bool) $this->client->deleteObject([
+            $this->client->deleteObject([
                 'Bucket' => $this->getBucketWithAppId(),
                 'Key'    => $path,
             ]);
         } catch (ServiceResponseException $e) {
-            return false;
+            echo $e.PHP_EOL;
         }
     }
 
@@ -327,16 +326,16 @@ class Adapter extends AbstractAdapter implements CanOverwriteFiles
      *
      * @return bool
      */
-    public function setVisibility($path, $visibility)
+    public function setVisibility($path, $visibility): void
     {
         try {
-            return (bool) $this->client->putObjectAcl([
+            $this->client->putObjectAcl([
                 'Bucket' => $this->getBucketWithAppId(),
                 'Key'    => $path,
                 'ACL'    => $this->normalizeVisibility($visibility),
             ]);
         } catch (ServiceResponseException $e) {
-            return false;
+            echo $e.PHP_EOL;
         }
     }
 
@@ -359,16 +358,18 @@ class Adapter extends AbstractAdapter implements CanOverwriteFiles
      *
      * @return array|bool
      */
-    public function read($path)
+    public function read($path): string
     {
         try {
             $response = $this->forceReadFromCDN()
                 ? $this->readFromCDN($path)
                 : $this->readFromSource($path);
 
-            return ['contents' => (string) $response];
+            return (string) $response;
+
         } catch (ServiceResponseException $e) {
-            return false;
+            echo $e.PHP_EOL;
+            return '';
         }
     }
 
@@ -448,11 +449,11 @@ class Adapter extends AbstractAdapter implements CanOverwriteFiles
 
     /**
      * @param string $directory
-     * @param bool   $recursive
+     * @param bool $recursive
      *
      * @return array|bool
      */
-    public function listContents($directory = '', $recursive = false)
+    public function listContents(string $directory = '', bool $recursive = false): iterable
     {
         $list = [];
 
@@ -669,5 +670,86 @@ class Adapter extends AbstractAdapter implements CanOverwriteFiles
         );
 
         return $signature->createAuthorization($cosRequest);
+    }
+
+    public function fileExists(string $path): bool
+    {
+        return $this->client->doesObjectExist($this->getBucket(), $path);
+    }
+
+    public function directoryExists(string $path): bool
+    {
+        return false;
+    }
+
+    public function deleteDirectory(string $path): void
+    {
+        $cos_prefix = $path;
+        $nextMarker = '';
+        $isTruncated = true;
+        while ($isTruncated) {
+            try {
+                $result = $this->client->listObjects(
+                    [
+                        'Bucket' => $this->getBucket(), //存储桶名称，由BucketName-Appid 组成，可以在COS控制台查看 https://console.cloud.tencent.com/cos5/bucket
+                        'Delimiter' => '',
+                        'EncodingType' => 'url',
+                        'Marker' => $nextMarker,
+                        'Prefix' => $cos_prefix,
+                        'MaxKeys' => 1000
+                    ]
+                );
+                $isTruncated = $result['IsTruncated'];
+                $nextMarker = $result['NextMarker'];
+                foreach ($result['Contents'] as $content) {
+                    $cos_file_path = $content['Key'];
+                    $local_file_path = $content['Key'];
+                    // 按照需求自定义拼接下载路径
+                    try {
+                        $this->client->deleteObject(array(
+                            'Bucket' => $this->config['bucket'], //存储桶名称，由BucketName-Appid 组成，可以在COS控制台查看 https://console.cloud.tencent.com/cos5/bucket
+                            'Key' => $cos_file_path,
+                        ));
+                    } catch (\Exception $e) {
+                        echo ($e);
+                    }
+                }
+            } catch (\Exception $e) {
+                echo ($e);
+            }
+        }
+    }
+
+    public function createDirectory(string $path, Config $config): void
+    {
+    }
+
+    public function visibility(string $path): FileAttributes
+    {
+        // TODO: Implement visibility() method.
+        return new FileAttributes($path);
+    }
+
+    public function mimeType(string $path): FileAttributes
+    {
+        // TODO: Implement mimeType() method.
+        return new FileAttributes($path);
+    }
+
+    public function lastModified(string $path): FileAttributes
+    {
+        // TODO: Implement lastModified() method.
+        return new FileAttributes($path);
+    }
+
+    public function fileSize(string $path): FileAttributes
+    {
+        // TODO: Implement fileSize() method.
+        return new FileAttributes($path);
+    }
+
+    public function move(string $source, string $destination, Config $config): void
+    {
+        // TODO: Implement move() method.
     }
 }
